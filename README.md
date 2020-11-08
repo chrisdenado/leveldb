@@ -1,3 +1,6 @@
+**该仓库用于学习leveldb用. 会添加学习过程中的注释，使用示例，测试代码，学习文档等等。。。
+this resp is used for learning leveldb, add some comments, add some examples, add some tests, some docs, etc...**
+
 **LevelDB is a fast key-value storage library written at Google that provides an ordered mapping from string keys to string values.**
 
 [![Build Status](https://travis-ci.org/google/leveldb.svg?branch=master)](https://travis-ci.org/google/leveldb)
