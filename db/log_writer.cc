@@ -47,7 +47,7 @@ Status Writer::AddRecord(const Slice& slice) {
       // Switch to a new block
       if (leftover > 0) {
         // Fill the trailer (literal below relies on kHeaderSize being 7)
-        static_assert(kHeaderSize == 7, "");
+        static_assert(kHeaderSize == 7, "");  // 每一个记录都有7个字节的Header, crc_check(4),length(2),type(1)
         dest_->Append(Slice("\x00\x00\x00\x00\x00\x00", leftover));
       }
       block_offset_ = 0;

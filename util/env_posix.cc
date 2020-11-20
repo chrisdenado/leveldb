@@ -633,12 +633,12 @@ class PosixEnv : public Env {
       return PosixError(filename, errno);
     }
 
-    if (!locks_.Insert(filename)) {
+    if (!locks_.Insert(filename)) {  // 底层透过向set插入是否成功来加锁，而非采用 fcntl(F_SETLK)
       ::close(fd);
       return Status::IOError("lock " + filename, "already held by process");
     }
 
-    if (LockOrUnlock(fd, true) == -1) {
+    if (LockOrUnlock(fd, true) == -1) { // flock entire file
       int lock_errno = errno;
       ::close(fd);
       locks_.Remove(filename);

@@ -175,7 +175,7 @@ struct SkipList<Key, Comparator>::Node {
 
  private:
   // Array of length equal to the node height.  next_[0] is lowest level link.
-  std::atomic<Node*> next_[1];
+  std::atomic<Node*> next_[1];  // 1 表明 至少有一個next_,(最底層); 實際情況根據該節點所在層數，會動態分配( 參見NewNode函數 ).
 };
 
 template <typename Key, class Comparator>
@@ -243,7 +243,7 @@ int SkipList<Key, Comparator>::RandomHeight() {
   // Increase height with probability 1 in kBranching
   static const unsigned int kBranching = 4;
   int height = 1;
-  while (height < kMaxHeight && ((rnd_.Next() % kBranching) == 0)) {
+  while (height < kMaxHeight && ((rnd_.Next() % kBranching) == 0)) {  // 节点有1/4的概率保留至下一级(好像是论文推荐的最佳概率)
     height++;
   }
   assert(height > 0);

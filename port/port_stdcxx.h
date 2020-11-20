@@ -71,7 +71,7 @@ class CondVar {
   CondVar& operator=(const CondVar&) = delete;
 
   void Wait() {
-    std::unique_lock<std::mutex> lock(mu_->mu_, std::adopt_lock);
+    std::unique_lock<std::mutex> lock(mu_->mu_, std::adopt_lock);  // adopt_lock: 锁的三种策略之一, 线程占有锁后不会尝试第二次锁定
     cv_.wait(lock);
     lock.release();
   }

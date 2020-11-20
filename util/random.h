@@ -27,7 +27,7 @@ class Random {
     static const uint32_t M = 2147483647L;  // 2^31-1
     static const uint64_t A = 16807;        // bits 14, 8, 7, 5, 2, 1, 0
     // We are computing
-    //       seed_ = (seed_ * A) % M,    where M = 2^31-1
+    //       seed_ = (seed_ * A) % M,    where M = 2^31-1  // 线性同余法
     //
     // seed_ must not be zero or M, or else all subsequent computed values
     // will be zero or M respectively.  For all other values, seed_ will end

@@ -22,8 +22,8 @@ Status::Status(Code code, const Slice& msg, const Slice& msg2) {
   assert(code != kOk);
   const uint32_t len1 = static_cast<uint32_t>(msg.size());
   const uint32_t len2 = static_cast<uint32_t>(msg2.size());
-  const uint32_t size = len1 + (len2 ? (2 + len2) : 0);
-  char* result = new char[size + 5];
+  const uint32_t size = len1 + (len2 ? (2 + len2) : 0);  // the 2 is for ": "
+  char* result = new char[size + 5];  //the 5 is for sizeof(size) 4 + (char)statuscode 1
   std::memcpy(result, &size, sizeof(size));
   result[4] = static_cast<char>(code);
   std::memcpy(result + 5, msg.data(), len1);

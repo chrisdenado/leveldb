@@ -300,7 +300,7 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
   }
 
   if (!env_->FileExists(CurrentFileName(dbname_))) {
-    if (options_.create_if_missing) {
+    if (options_.create_if_missing) {  // 不存在时创建
       s = NewDB();
       if (!s.ok()) {
         return s;
@@ -1222,7 +1222,7 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
     // into mem_.
     {
       mutex_.Unlock();
-      status = log_->AddRecord(WriteBatchInternal::Contents(write_batch));
+      status = log_->AddRecord(WriteBatchInternal::Contents(write_batch));  // WAL, 先写磁盘
       bool sync_error = false;
       if (status.ok() && options.sync) {
         status = logfile_->Sync();
