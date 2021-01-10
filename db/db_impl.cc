@@ -294,12 +294,12 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
   // may already exist from a previous failed creation attempt.
   env_->CreateDir(dbname_);
   assert(db_lock_ == nullptr);
-  Status s = env_->LockFile(LockFileName(dbname_), &db_lock_);
+  Status s = env_->LockFile(LockFileName(dbname_), &db_lock_); // 创建文件锁 支持多进程并发访问同一个数据库
   if (!s.ok()) {
     return s;
   }
 
-  if (!env_->FileExists(CurrentFileName(dbname_))) {
+  if (!env_->FileExists(CurrentFileName(dbname_))) { // 判断CURRENT文件
     if (options_.create_if_missing) {  // 不存在时创建
       s = NewDB();
       if (!s.ok()) {
@@ -316,7 +316,7 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
     }
   }
 
-  s = versions_->Recover(save_manifest);
+  s = versions_->Recover(save_manifest); // 恢复VersionEdit. MANIFEST文件中主要存储的是VersionEdit
   if (!s.ok()) {
     return s;
   }

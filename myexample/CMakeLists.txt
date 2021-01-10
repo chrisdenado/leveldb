@@ -24,5 +24,6 @@ set(THREADS_PREFER_PTHREAD_FLAG)
 include_directories(../include)
 
 add_executable(simple_use1 simple_use1.cpp)
-target_link_libraries(simple_use1 ${PROJECT_SOURCE_DIR}/build/libleveldb.a pthread)
+target_link_libraries(simple_use1 leveldb pthread)
+#target_link_libraries(simple_use1 ${PROJECT_SOURCE_DIR}/build/libleveldb.a pthread)
 

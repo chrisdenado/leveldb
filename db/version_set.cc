@@ -873,14 +873,14 @@ Status VersionSet::Recover(bool* save_manifest) {
   if (!s.ok()) {
     return s;
   }
-  if (current.empty() || current[current.size() - 1] != '\n') {
+  if (current.empty() || current[current.size() - 1] != '\n') { // CURRENT文件的值都以换行符结尾
     return Status::Corruption("CURRENT file does not end with newline");
   }
-  current.resize(current.size() - 1);
+  current.resize(current.size() - 1); // 移除换行符
 
   std::string dscname = dbname_ + "/" + current;
   SequentialFile* file;
-  s = env_->NewSequentialFile(dscname, &file);
+  s = env_->NewSequentialFile(dscname, &file); // 创建一个序列读文件的对象
   if (!s.ok()) {
     if (s.IsNotFound()) {
       return Status::Corruption("CURRENT points to a non-existent file",

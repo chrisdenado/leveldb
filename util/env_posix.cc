@@ -129,7 +129,7 @@ class PosixSequentialFile final : public SequentialFile {
   }
 
   Status Skip(uint64_t n) override {
-    if (::lseek(fd_, n, SEEK_CUR) == static_cast<off_t>(-1)) {
+    if (::lseek(fd_, n, SEEK_CUR) == static_cast<off_t>(-1)) { // 文件读写位置从当前位置往后移n
       return PosixError(filename_, errno);
     }
     return Status::OK();
