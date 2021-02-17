@@ -124,11 +124,11 @@ LookupKey::LookupKey(const Slice& user_key, SequenceNumber s) {
     dst = new char[needed];
   }
   start_ = dst;
-  dst = EncodeVarint32(dst, usize + 8);
+  dst = EncodeVarint32(dst, usize + 8);     // 先记录 klength  (varint32)
   kstart_ = dst;
-  std::memcpy(dst, user_key.data(), usize);
+  std::memcpy(dst, user_key.data(), usize);         // 保存 user_key
   dst += usize;
-  EncodeFixed64(dst, PackSequenceAndType(s, kValueTypeForSeek));
+  EncodeFixed64(dst, PackSequenceAndType(s, kValueTypeForSeek));    // 保存 (seq_num<<8 | type)
   dst += 8;
   end_ = dst;
 }

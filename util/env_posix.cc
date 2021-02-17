@@ -246,9 +246,9 @@ class PosixMmapReadableFile final : public RandomAccessFile {
   const std::string filename_;
 };
 
-class PosixWritableFile final : public WritableFile {
+class PosixWritableFile final : public  {
  public:
-  PosixWritableFile(std::string filename, int fd)
+  PosixWritableFile(std::string filename, WritableFileint fd)
       : pos_(0),
         fd_(fd),
         is_manifest_(IsManifest(filename)),
@@ -268,7 +268,7 @@ class PosixWritableFile final : public WritableFile {
 
     // Fit as much as possible into buffer.
     size_t copy_size = std::min(write_size, kWritableFileBufferSize - pos_);
-    std::memcpy(buf_ + pos_, write_data, copy_size);
+    std::memcpy(buf_ + pos_, write_data, copy_size);    // 尽量用buf_存
     write_data += copy_size;
     write_size -= copy_size;
     pos_ += copy_size;
@@ -277,13 +277,13 @@ class PosixWritableFile final : public WritableFile {
     }
 
     // Can't fit in buffer, so need to do at least one write.
-    Status status = FlushBuffer();
+    Status status = FlushBuffer();  // buf_实在满了,需要先存盘
     if (!status.ok()) {
       return status;
     }
 
     // Small writes go to buffer, large writes are written directly.
-    if (write_size < kWritableFileBufferSize) {
+    if (write_size < kWritableFileBufferSize) {     // 存盘完成后,根据剩余长度决定写buf_还是直接存盘
       std::memcpy(buf_, write_data, write_size);
       pos_ = write_size;
       return Status::OK();

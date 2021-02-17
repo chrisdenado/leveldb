@@ -151,7 +151,7 @@ class Version {
   int refs_;          // Number of live refs to this version
 
   // List of files per level
-  std::vector<FileMetaData*> files_[config::kNumLevels];
+  std::vector<FileMetaData*> files_[config::kNumLevels];    // 每个level的文件元信息列表
 
   // Next file to compact based on seek stats.
   FileMetaData* file_to_compact_;
@@ -251,6 +251,8 @@ class VersionSet {
   // Returns true iff some level needs a compaction.
   bool NeedsCompaction() const {
     Version* v = current_;
+    // compaction_score_: 从打分规则函数Finalize获得
+    // file_to_compact_:
     return (v->compaction_score_ >= 1) || (v->file_to_compact_ != nullptr);
   }
 

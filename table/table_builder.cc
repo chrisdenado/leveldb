@@ -41,7 +41,7 @@ struct TableBuilder::Rep {
   uint64_t offset;
   Status status;
   BlockBuilder data_block;
-  BlockBuilder index_block;
+  BlockBuilder index_block; // data_block的元信息管理, 包含: 该data_block的最大InternalKey, data_block在ldb文件的偏移,及data_block的实际大小
   std::string last_key;
   int64_t num_entries;
   bool closed;  // Either Finish() or Abandon() has been called.
@@ -101,23 +101,23 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
 
   if (r->pending_index_entry) {
     assert(r->data_block.empty());
-    r->options.comparator->FindShortestSeparator(&r->last_key, key);
+    r->options.comparator->FindShortestSeparator(&r->last_key, key);    // 从前一个block的最后一个key 和当前key找一个最小区分的字符串做为block之间的间隔key
     std::string handle_encoding;
     r->pending_handle.EncodeTo(&handle_encoding);
-    r->index_block.Add(r->last_key, Slice(handle_encoding));
+    r->index_block.Add(r->last_key, Slice(handle_encoding));    // 记录block的最后一个key的 offset_和size_
     r->pending_index_entry = false;
   }
 
   if (r->filter_block != nullptr) {
     r->filter_block->AddKey(key);
   }
-
+    // 向 data_block 中写入数据
   r->last_key.assign(key.data(), key.size());
   r->num_entries++;
   r->data_block.Add(key, value);
 
   const size_t estimated_block_size = r->data_block.CurrentSizeEstimate();
-  if (estimated_block_size >= r->options.block_size) {
+  if (estimated_block_size >= r->options.block_size) {  // > 4KB时,写盘, pending_index_entry对应置为true
     Flush();
   }
 }
@@ -178,7 +178,7 @@ void TableBuilder::WriteRawBlock(const Slice& block_contents,
                                  CompressionType type, BlockHandle* handle) {
   Rep* r = rep_;
   handle->set_offset(r->offset);
-  handle->set_size(block_contents.size());
+  handle->set_size(block_contents.size());  // 将该block的偏移和大小记录到handle中,便于下次添加到 index_block 中
   r->status = r->file->Append(block_contents);
   if (r->status.ok()) {
     char trailer[kBlockTrailerSize];
@@ -237,7 +237,7 @@ Status TableBuilder::Finish() {
     WriteBlock(&r->index_block, &index_block_handle);
   }
 
-  // Write footer
+  // Write footer, 记录 metaindex_block 和 index_block 的位置,读取时先通过这两个来读取数据
   if (ok()) {
     Footer footer;
     footer.set_metaindex_handle(metaindex_block_handle);

@@ -79,6 +79,7 @@ Status Writer::AddRecord(const Slice& slice) {
   return s;
 }
 
+// 计算crc, 并将记录写到日志中
 Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr,
                                   size_t length) {
   assert(length <= 0xffff);  // Must fit in two bytes
@@ -98,9 +99,9 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr,
   // Write the header and the payload
   Status s = dest_->Append(Slice(buf, kHeaderSize));
   if (s.ok()) {
-    s = dest_->Append(Slice(ptr, length));
+    s = dest_->Append(Slice(ptr, length));  // Append可能只落入缓存, 此处需要落盘确保数据不丢失
     if (s.ok()) {
-      s = dest_->Flush();
+      s = dest_->Flush();   // 确保落盘
     }
   }
   block_offset_ += kHeaderSize + length;

@@ -190,7 +190,7 @@ class LRUCache {
 
   // Dummy head of in-use list.
   // Entries are in use by clients, and have refs >= 2 and in_cache==true.
-  LRUHandle in_use_ GUARDED_BY(mutex_);
+  LRUHandle in_use_ GUARDED_BY(mutex_);  // 目前被外部使用的节点
 
   HandleTable table_ GUARDED_BY(mutex_);
 };
@@ -233,7 +233,7 @@ void LRUCache::Unref(LRUHandle* e) {
   } else if (e->in_cache && e->refs == 1) {
     // No longer in use; move to lru_ list.
     LRU_Remove(e);
-    LRU_Append(&lru_, e);
+    LRU_Append(&lru_, e);   // 最近使用的, 放在 lru_->prev的位置(即末端)
   }
 }
 
@@ -291,7 +291,7 @@ Cache::Handle* LRUCache::Insert(const Slice& key, uint32_t hash, void* value,
     // next is read by key() in an assert, so it must be initialized
     e->next = nullptr;
   }
-  while (usage_ > capacity_ && lru_.next != &lru_) {
+  while (usage_ > capacity_ && lru_.next != &lru_) {    // 需要移除一些不常使用的数据
     LRUHandle* old = lru_.next;
     assert(old->refs == 1);
     bool erased = FinishErase(table_.Remove(old->key(), old->hash));
@@ -338,7 +338,7 @@ static const int kNumShards = 1 << kNumShardBits;
 
 class ShardedLRUCache : public Cache {
  private:
-  LRUCache shard_[kNumShards];
+  LRUCache shard_[kNumShards];  // 多个LRUCache, 提高写入查询速度, 减少下层的锁冲突
   port::Mutex id_mutex_;
   uint64_t last_id_;
 
@@ -346,11 +346,11 @@ class ShardedLRUCache : public Cache {
     return Hash(s.data(), s.size(), 0);
   }
 
-  static uint32_t Shard(uint32_t hash) { return hash >> (32 - kNumShardBits); }
+  static uint32_t Shard(uint32_t hash) { return hash >> (32 - kNumShardBits); }  // 取hash值的高四位做分片,(对应kNumShardBits)
 
  public:
   explicit ShardedLRUCache(size_t capacity) : last_id_(0) {
-    const size_t per_shard = (capacity + (kNumShards - 1)) / kNumShards;
+    const size_t per_shard = (capacity + (kNumShards - 1)) / kNumShards;    // 向上取整
     for (int s = 0; s < kNumShards; s++) {
       shard_[s].SetCapacity(per_shard);
     }

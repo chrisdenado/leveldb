@@ -58,7 +58,7 @@ size_t BlockBuilder::CurrentSizeEstimate() const {
           sizeof(uint32_t));                     // Restart array length
 }
 
-Slice BlockBuilder::Finish() {
+Slice BlockBuilder::Finish() { // 将restart点和restart点的数量放在最后
   // Append restart array
   for (size_t i = 0; i < restarts_.size(); i++) {
     PutFixed32(&buffer_, restarts_[i]);
@@ -78,7 +78,7 @@ void BlockBuilder::Add(const Slice& key, const Slice& value) {
   if (counter_ < options_->block_restart_interval) {
     // See how much sharing to do with previous string
     const size_t min_length = std::min(last_key_piece.size(), key.size());
-    while ((shared < min_length) && (last_key_piece[shared] == key[shared])) {
+    while ((shared < min_length) && (last_key_piece[shared] == key[shared])) {  // 查找最大共享前缀
       shared++;
     }
   } else {

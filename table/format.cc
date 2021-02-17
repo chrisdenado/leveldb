@@ -61,6 +61,7 @@ Status Footer::DecodeFrom(Slice* input) {
   return result;
 }
 
+// 通过 BlockHandle 提供的 offset 和size, 从文件中读取该block
 Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
                  const BlockHandle& handle, BlockContents* result) {
   result->data = Slice();

@@ -41,10 +41,10 @@ char* Arena::AllocateAligned(size_t bytes) {
                 "Pointer size should be a power of 2");
   size_t current_mod = reinterpret_cast<uintptr_t>(alloc_ptr_) & (align - 1);
   size_t slop = (current_mod == 0 ? 0 : align - current_mod);
-  size_t needed = bytes + slop;
+  size_t needed = bytes + slop;     // 原本的长度 加上 对齐指针需要的长度
   char* result;
   if (needed <= alloc_bytes_remaining_) {
-    result = alloc_ptr_ + slop;
+    result = alloc_ptr_ + slop;     // 先对齐指针, 剩下的为申请长度
     alloc_ptr_ += needed;
     alloc_bytes_remaining_ -= needed;
   } else {

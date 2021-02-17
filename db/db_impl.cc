@@ -668,11 +668,11 @@ void DBImpl::MaybeScheduleCompaction() {
   } else if (!bg_error_.ok()) {
     // Already got an error; no more changes
   } else if (imm_ == nullptr && manual_compaction_ == nullptr &&
-             !versions_->NeedsCompaction()) {
+             !versions_->NeedsCompaction()) {   // 判断是否需要压缩
     // No work to be done
   } else {
     background_compaction_scheduled_ = true;
-    env_->Schedule(&DBImpl::BGWork, this);
+    env_->Schedule(&DBImpl::BGWork, this);  // todo:了解Schedule实现
   }
 }
 
@@ -695,7 +695,7 @@ void DBImpl::BackgroundCall() {
 
   // Previous compaction may have produced too many files in a level,
   // so reschedule another compaction if needed.
-  MaybeScheduleCompaction();
+  MaybeScheduleCompaction();    // 形成递归, 最坏情况需 压缩到最后一层
   background_work_finished_signal_.SignalAll();
 }
 
@@ -710,7 +710,7 @@ void DBImpl::BackgroundCompaction() {
   Compaction* c;
   bool is_manual = (manual_compaction_ != nullptr);
   InternalKey manual_end;
-  if (is_manual) {
+  if (is_manual) {  // 手动压缩流程,一般用于测试
     ManualCompaction* m = manual_compaction_;
     c = versions_->CompactRange(m->level, m->begin, m->end);
     m->done = (c == nullptr);
@@ -901,9 +901,9 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   assert(versions_->NumLevelFiles(compact->compaction->level()) > 0);
   assert(compact->builder == nullptr);
   assert(compact->outfile == nullptr);
-  if (snapshots_.empty()) {
+  if (snapshots_.empty()) {     // 没有快照时,所有旧的k/v数据都可删除
     compact->smallest_snapshot = versions_->LastSequence();
-  } else {
+  } else { // 有快照时,只能删除比最老快照的SeqNum还小的旧k/v数据
     compact->smallest_snapshot = snapshots_.oldest()->sequence_number();
   }
 
@@ -920,7 +920,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
   while (input->Valid() && !shutting_down_.load(std::memory_order_acquire)) {
     // Prioritize immutable compaction work
-    if (has_imm_.load(std::memory_order_relaxed)) {
+    if (has_imm_.load(std::memory_order_relaxed)) { // 压缩immmemtable
       const uint64_t imm_start = env_->NowMicros();
       mutex_.Lock();
       if (imm_ != nullptr) {
@@ -935,7 +935,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     Slice key = input->key();
     if (compact->compaction->ShouldStopBefore(key) &&
         compact->builder != nullptr) {
-      status = FinishCompactionOutputFile(compact, input);
+      status = FinishCompactionOutputFile(compact, input);  // 当前压缩输出的文件和level+2层重复较大,所以提前结束此压缩文件的生成
       if (!status.ok()) {
         break;
       }
@@ -958,12 +958,12 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         last_sequence_for_key = kMaxSequenceNumber;
       }
 
-      if (last_sequence_for_key <= compact->smallest_snapshot) {
+      if (last_sequence_for_key <= compact->smallest_snapshot) { // user_key 的非最新版本小于快照版本，则可以直接丢弃
         // Hidden by an newer entry for same user key
         drop = true;  // (A)
       } else if (ikey.type == kTypeDeletion &&
                  ikey.sequence <= compact->smallest_snapshot &&
-                 compact->compaction->IsBaseLevelForKey(ikey.user_key)) {
+                 compact->compaction->IsBaseLevelForKey(ikey.user_key)) {   // 删除的user_key, 其版本小于快照版本，并且在更高层没有相同的 user_key
         // For this user key:
         // (1) there is no data in higher levels
         // (2) data in lower levels will have larger sequence numbers
@@ -1002,7 +1002,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
 
       // Close output file if it is big enough
       if (compact->builder->FileSize() >=
-          compact->compaction->MaxOutputFileSize()) {
+          compact->compaction->MaxOutputFileSize()) {   // 输出文件大小超过该level阈值,即输出
         status = FinishCompactionOutputFile(compact, input);
         if (!status.ok()) {
           break;
@@ -1040,7 +1040,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   stats_[compact->compaction->level() + 1].Add(stats);
 
   if (status.ok()) {
-    status = InstallCompactionResults(compact);
+    status = InstallCompactionResults(compact); // 将compact过程的删除文件和新增文件添加到VersionEdit
   }
   if (!status.ok()) {
     RecordBackgroundError(status);
@@ -1144,7 +1144,7 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
     } else if (imm != nullptr && imm->Get(lkey, value, &s)) {
       // Done
     } else {
-      s = current->Get(options, lkey, value, &stats);
+      s = current->Get(options, lkey, value, &stats);   // 查找ldb文件
       have_stat_update = true;
     }
     mutex_.Lock();
@@ -1236,7 +1236,7 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
         }
       }
       if (status.ok()) {
-        status = WriteBatchInternal::InsertInto(write_batch, mem_);
+        status = WriteBatchInternal::InsertInto(write_batch, mem_);     // 將WriteBatch中記錄的操作寫入MemTable中
       }
       mutex_.Lock();
       if (sync_error) {
@@ -1333,7 +1333,7 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       s = bg_error_;
       break;
     } else if (allow_delay && versions_->NumLevelFiles(0) >=
-                                  config::kL0_SlowdownWritesTrigger) {
+                                  config::kL0_SlowdownWritesTrigger) {  // 1. level0数量大于slowdown限制
       // We are getting close to hitting a hard limit on the number of
       // L0 files.  Rather than delaying a single write by several
       // seconds when we hit the hard limit, start delaying each
@@ -1345,19 +1345,19 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       allow_delay = false;  // Do not delay a single write more than once
       mutex_.Lock();
     } else if (!force &&
-               (mem_->ApproximateMemoryUsage() <= options_.write_buffer_size)) {
+               (mem_->ApproximateMemoryUsage() <= options_.write_buffer_size)) {    // 2. 空间足够
       // There is room in current memtable
       break;
-    } else if (imm_ != nullptr) {
+    } else if (imm_ != nullptr) {   // 3. 已有immemtable文件, 等上一个imm先写完
       // We have filled up the current memtable, but the previous
       // one is still being compacted, so we wait.
       Log(options_.info_log, "Current memtable full; waiting...\n");
       background_work_finished_signal_.Wait();
-    } else if (versions_->NumLevelFiles(0) >= config::kL0_StopWritesTrigger) {
+    } else if (versions_->NumLevelFiles(0) >= config::kL0_StopWritesTrigger) {  // 4. level0数量大于StopWrite限制
       // There are too many level-0 files.
       Log(options_.info_log, "Too many L0 files; waiting...\n");
       background_work_finished_signal_.Wait();
-    } else {
+    } else {    // 5. 新建一个memtable,
       // Attempt to switch to a new memtable and trigger compaction of old
       assert(versions_->PrevLogNumber() == 0);
       uint64_t new_log_number = versions_->NewFileNumber();

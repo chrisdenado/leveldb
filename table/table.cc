@@ -171,7 +171,7 @@ Iterator* Table::BlockReader(void* arg, const ReadOptions& options,
       EncodeFixed64(cache_key_buffer + 8, handle.offset());
       Slice key(cache_key_buffer, sizeof(cache_key_buffer));
       cache_handle = block_cache->Lookup(key);
-      if (cache_handle != nullptr) {
+      if (cache_handle != nullptr) {    // 先从LRU中查找
         block = reinterpret_cast<Block*>(block_cache->Value(cache_handle));
       } else {
         s = ReadBlock(table->rep_->file, options, handle, &contents);

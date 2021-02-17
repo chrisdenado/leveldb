@@ -18,7 +18,7 @@ class BloomFilterPolicy : public FilterPolicy {
  public:
   explicit BloomFilterPolicy(int bits_per_key) : bits_per_key_(bits_per_key) {
     // We intentionally round down to reduce probing cost a little bit
-    k_ = static_cast<size_t>(bits_per_key * 0.69);  // 0.69 =~ ln(2)
+    k_ = static_cast<size_t>(bits_per_key * 0.69);  // 0.69 =~ ln(2), 布隆过滤器中hash函数的数量
     if (k_ < 1) k_ = 1;
     if (k_ > 30) k_ = 30;
   }
@@ -38,7 +38,7 @@ class BloomFilterPolicy : public FilterPolicy {
 
     const size_t init_size = dst->size();
     dst->resize(init_size + bytes, 0);
-    dst->push_back(static_cast<char>(k_));  // Remember # of probes in filter
+    dst->push_back(static_cast<char>(k_));  // Remember # of probes in filter   // 在filter最后压入过滤器函数的个数
     char* array = &(*dst)[init_size];
     for (int i = 0; i < n; i++) {
       // Use double-hashing to generate a sequence of hash values.
@@ -48,7 +48,7 @@ class BloomFilterPolicy : public FilterPolicy {
       for (size_t j = 0; j < k_; j++) {
         const uint32_t bitpos = h % bits;
         array[bitpos / 8] |= (1 << (bitpos % 8));
-        h += delta;
+        h += delta; // h + i * H(x) 来模拟k_个hash函数(i=0,1,2,..k_-1), 其中 H(x) = (h >> 17) | (h << 15)
       }
     }
   }
