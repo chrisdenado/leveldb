@@ -61,7 +61,6 @@ Status Footer::DecodeFrom(Slice* input) {
   return result;
 }
 
-// 通过 BlockHandle 提供的 offset 和size, 从文件中读取该block
 Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
                  const BlockHandle& handle, BlockContents* result) {
   result->data = Slice();
@@ -97,7 +96,7 @@ Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
 
   switch (data[n]) {
     case kNoCompression:
-      if (data != buf) {
+      if (data != buf) {    // 取决于env的实现. 默认的env_posix中，data和buf是同样的地址
         // File implementation gave us pointer to some other data.
         // Use it directly under the assumption that it will be live
         // while the file is open.

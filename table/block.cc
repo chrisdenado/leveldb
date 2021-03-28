@@ -19,7 +19,7 @@ namespace leveldb {
 
 inline uint32_t Block::NumRestarts() const {
   assert(size_ >= sizeof(uint32_t));
-  return DecodeFixed32(data_ + size_ - sizeof(uint32_t));
+  return DecodeFixed32(data_ + size_ - sizeof(uint32_t));   // 不含最后的trail, 所以尾4位 为 重启点数量
 }
 
 Block::Block(const BlockContents& contents)
@@ -34,7 +34,7 @@ Block::Block(const BlockContents& contents)
       // The size is too small for NumRestarts()
       size_ = 0;
     } else {
-      restart_offset_ = size_ - (1 + NumRestarts()) * sizeof(uint32_t);
+      restart_offset_ = size_ - (1 + NumRestarts()) * sizeof(uint32_t);     // 重启点偏移位置
     }
   }
 }
@@ -59,7 +59,7 @@ static inline const char* DecodeEntry(const char* p, const char* limit,
   *shared = reinterpret_cast<const uint8_t*>(p)[0];
   *non_shared = reinterpret_cast<const uint8_t*>(p)[1];
   *value_length = reinterpret_cast<const uint8_t*>(p)[2];
-  if ((*shared | *non_shared | *value_length) < 128) {  // 当 shared\non_shared\value_length 均不超过128时, 可通过此方法快速解析
+  if ((*shared | *non_shared | *value_length) < 128) {
     // Fast path: all three values are encoded in one byte each
     p += 3;
   } else {
@@ -71,7 +71,7 @@ static inline const char* DecodeEntry(const char* p, const char* limit,
   if (static_cast<uint32_t>(limit - p) < (*non_shared + *value_length)) {
     return nullptr;
   }
-  return p; // 从 non_shared_key 开始
+  return p;
 }
 
 class Block::Iter : public Iterator {
@@ -93,8 +93,10 @@ class Block::Iter : public Iterator {
   }
 
   // Return the offset in data_ just past the end of the current entry.
+  // 需要保证value_的正确性。在一般的record读取时，value_及对应的value；
+  // 当SeekToRestartPoint时，为了接下来能从重启点开始读取，所以value_ = Slice(data_ + offset, 0);
   inline uint32_t NextEntryOffset() const {
-    return (value_.data() + value_.size()) - data_; // 根据value当前位置 + 大小, 跳到下一个Entry的起点.(因为每个Entry以value结尾)
+    return (value_.data() + value_.size()) - data_;
   }
 
   uint32_t GetRestartPoint(uint32_t index) {
@@ -108,8 +110,8 @@ class Block::Iter : public Iterator {
     // current_ will be fixed by ParseNextKey();
 
     // ParseNextKey() starts at the end of value_, so set value_ accordingly
-    uint32_t offset = GetRestartPoint(index);   // 复活点记录的是该entry的起始地址
-    value_ = Slice(data_ + offset, 0);  // 此处设置为0, 相当于value_只记录了该entry的起始地址,并没有实际长度.
+    uint32_t offset = GetRestartPoint(index);
+    value_ = Slice(data_ + offset, 0);  // 方便ParseNextKey执行
   }
 
  public:
@@ -158,6 +160,8 @@ class Block::Iter : public Iterator {
     SeekToRestartPoint(restart_index_);
     do {
       // Loop until end of current entry hits the start of original entry
+      // ParseNextKey()先解析下一个block中的record，并保存到 value_, key_
+      // NextEntryOffset() 从当前的value_(即上一步取得的值的位置)开始，取下下个record的位置
     } while (ParseNextKey() && NextEntryOffset() < original);
   }
 
@@ -183,15 +187,15 @@ class Block::Iter : public Iterator {
         return;
       }
     }
-
+    // 通过restart点进行二分查找. 查找最后一个小于等于target
     while (left < right) {
-      uint32_t mid = (left + right + 1) / 2;    // 注意此处的 +1, 确保在 l(2) r(3)的情况下, mid 取3而不是取2,
+      uint32_t mid = (left + right + 1) / 2;
       uint32_t region_offset = GetRestartPoint(mid);
       uint32_t shared, non_shared, value_length;
       const char* key_ptr =
           DecodeEntry(data_ + region_offset, data_ + restarts_, &shared,
                       &non_shared, &value_length);
-      if (key_ptr == nullptr || (shared != 0)) {    // 因为是重启点,所以shared一定为0
+      if (key_ptr == nullptr || (shared != 0)) {    // 重启点保留完整key，所以没有shared的情况
         CorruptionError();
         return;
       }
@@ -247,6 +251,7 @@ class Block::Iter : public Iterator {
     value_.clear();
   }
 
+  // 始终需要先执行该函数，获取当前位置的record，并将value写入value_
   bool ParseNextKey() {
     current_ = NextEntryOffset();
     const char* p = data_ + current_;
@@ -260,7 +265,7 @@ class Block::Iter : public Iterator {
 
     // Decode next entry
     uint32_t shared, non_shared, value_length;
-    p = DecodeEntry(p, limit, &shared, &non_shared, &value_length); // 返回的p从 non_shared_value 开始,所以下面直接append
+    p = DecodeEntry(p, limit, &shared, &non_shared, &value_length);
     if (p == nullptr || key_.size() < shared) {
       CorruptionError();
       return false;
@@ -269,7 +274,7 @@ class Block::Iter : public Iterator {
       key_.append(p, non_shared);
       value_ = Slice(p + non_shared, value_length);
       while (restart_index_ + 1 < num_restarts_ &&
-             GetRestartPoint(restart_index_ + 1) < current_) {  // 确保 restart_index_ 为最近小于 当前值的位置
+             GetRestartPoint(restart_index_ + 1) < current_) {  // 当跨restart点时，更新restart_index_
         ++restart_index_;
       }
       return true;
