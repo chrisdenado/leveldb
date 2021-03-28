@@ -95,13 +95,13 @@ void MemTable::Add(SequenceNumber s, ValueType type, const Slice& key,
   p = EncodeVarint32(p, val_size);
   std::memcpy(p, value.data(), val_size);
   assert(p + val_size == buf + encoded_len);
-  table_.Insert(buf);
+  table_.Insert(buf);   // buf包含了value
 }
 
 bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
   Slice memkey = key.memtable_key();
   Table::Iterator iter(&table_);
-  iter.Seek(memkey.data());
+  iter.Seek(memkey.data()); // 通过key去查询整个buf. (存储时的buf是key+vaule, 查询时先通过key找到buf,通过比对两者key是否一致来判断是否有该key对应的value)
   if (iter.Valid()) {
     // entry format is:
     //    klength  varint32
@@ -115,7 +115,7 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
     const char* entry = iter.key();
     uint32_t key_length;
     const char* key_ptr = GetVarint32Ptr(entry, entry + 5, &key_length);
-    // seek是按照IntelnalKey查询的, 这里按照user给定的key再查询一遍
+    // 可能有不存在的情况, 所以这里需要检查
     if (comparator_.comparator.user_comparator()->Compare(
             Slice(key_ptr, key_length - 8), key.user_key()) == 0) {
       // Correct user key

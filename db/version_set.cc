@@ -570,6 +570,8 @@ std::string Version::DebugString() const {
 // A helper class so we can efficiently apply a whole sequence
 // of edits to a particular state without creating intermediate
 // Versions that contain full copies of the intermediate state.
+
+// 将多次 VersionEdit 合并为一次 Version, 添加到VersionSet中. 启动时从MANIFEST中恢复时可用到该处
 class VersionSet::Builder {
  private:
   // Helper to sort by v->files_[file_number].smallest
@@ -587,7 +589,7 @@ class VersionSet::Builder {
     }
   };
 
-  typedef std::set<FileMetaData*, BySmallestKey> FileSet;
+  typedef std::set<FileMetaData*, BySmallestKey> FileSet;   // FileMetaData 按提供的由小到大排列
   struct LevelState {
     std::set<uint64_t> deleted_files;
     FileSet* added_files;
@@ -604,7 +606,7 @@ class VersionSet::Builder {
     BySmallestKey cmp;
     cmp.internal_comparator = &vset_->icmp_;
     for (int level = 0; level < config::kNumLevels; level++) {
-      levels_[level].added_files = new FileSet(cmp);
+      levels_[level].added_files = new FileSet(cmp);    //
     }
   }
 
@@ -667,7 +669,7 @@ class VersionSet::Builder {
       f->allowed_seeks = static_cast<int>((f->file_size / 16384U));
       if (f->allowed_seeks < 100) f->allowed_seeks = 100;
 
-      levels_[level].deleted_files.erase(f->number);
+      levels_[level].deleted_files.erase(f->number);    // 移除对该文件的删除情况
       levels_[level].added_files->insert(f);
     }
   }
@@ -683,16 +685,16 @@ class VersionSet::Builder {
       std::vector<FileMetaData*>::const_iterator base_iter = base_files.begin();
       std::vector<FileMetaData*>::const_iterator base_end = base_files.end();
       const FileSet* added_files = levels_[level].added_files;
-      v->files_[level].reserve(base_files.size() + added_files->size());
+      v->files_[level].reserve(base_files.size() + added_files->size());    // 在已有的version(base_)上添加 该builder中的 add_file
       for (const auto& added_file : *added_files) {
         // Add all smaller files listed in base_
         for (std::vector<FileMetaData*>::const_iterator bpos =
-                 std::upper_bound(base_iter, base_end, added_file, cmp);    // 按照smallest的大小顺序添加, added_files的顺序已经由Set保证了
-             base_iter != bpos; ++base_iter) {
+                 std::upper_bound(base_iter, base_end, added_file, cmp);    // 查找base_中第一个smallest大于 added_file 的位置
+             base_iter != bpos; ++base_iter) {  // 向v->level中添加base_中所有小于 bpos 的元素. 并且下一次可以从当前位置iter继续查找(需要base_和add_file都有序才行)
           MaybeAddFile(v, level, *base_iter);   // 对level > 0, 确保 v->files_[level] 中已有的最大 largest < base_iter.smallest, 即 base_iter 不会和前面的文件有重叠
         }
 
-        MaybeAddFile(v, level, added_file);
+        MaybeAddFile(v, level, added_file);     // 添加 add元素
       }
 
       // Add remaining base files
@@ -911,7 +913,7 @@ Status VersionSet::Recover(bool* save_manifest) {
                        0 /*initial_offset*/);
     Slice record;
     std::string scratch;
-    while (reader.ReadRecord(&record, &scratch) && s.ok()) {
+    while (reader.ReadRecord(&record, &scratch) && s.ok()) {    // 从MANIFEST文件中读取记录, 并Apply在VersionSet::Builder上
       ++read_records;
       VersionEdit edit;
       s = edit.DecodeFrom(record);
@@ -971,10 +973,10 @@ Status VersionSet::Recover(bool* save_manifest) {
 
   if (s.ok()) {
     Version* v = new Version(this);
-    builder.SaveTo(v);
+    builder.SaveTo(v);  //
     // Install recovered version
-    Finalize(v);
-    AppendVersion(v);
+    Finalize(v);        // 打分规则,计算压缩层次
+    AppendVersion(v);   // 将修改添加到VersionSet中
     manifest_file_number_ = next_file;
     next_file_number_ = next_file + 1;
     last_sequence_ = last_sequence;
@@ -982,7 +984,7 @@ Status VersionSet::Recover(bool* save_manifest) {
     prev_log_number_ = prev_log_number;
 
     // See if we can reuse the existing MANIFEST file.
-    if (ReuseManifest(dscname, current)) {
+    if (ReuseManifest(dscname, current)) { // 尝试复用MANIFEST文件
       // No need to save new manifest
     } else {
       *save_manifest = true;
@@ -1008,7 +1010,7 @@ bool VersionSet::ReuseManifest(const std::string& dscname,
       manifest_type != kDescriptorFile ||
       !env_->GetFileSize(dscname, &manifest_size).ok() ||
       // Make new compacted MANIFEST if old one is too big
-      manifest_size >= TargetFileSize(options_)) {
+      manifest_size >= TargetFileSize(options_)) {  // 检查是否可以重用已有的manifest文件
     return false;
   }
 

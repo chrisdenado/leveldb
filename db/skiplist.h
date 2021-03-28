@@ -290,7 +290,7 @@ SkipList<Key, Comparator>::FindLessThan(const Key& key) const {
     Node* next = x->Next(level);
     if (next == nullptr || compare_(next->key, key) >= 0) {
       if (level == 0) {
-        return x;
+        return x; // 这里return x; 上面的FindGreaterOrEqual会return next
       } else {
         // Switch to next list
         level--;

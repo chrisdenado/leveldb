@@ -103,7 +103,7 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
     assert(r->data_block.empty());
     r->options.comparator->FindShortestSeparator(&r->last_key, key);
     std::string handle_encoding;
-    r->pending_handle.EncodeTo(&handle_encoding);
+    r->pending_handle.EncodeTo(&handle_encoding);   // 在Flush完成时更新的pending_handle, 在此处写到sstable的index_block中
     r->index_block.Add(r->last_key, Slice(handle_encoding));
     r->pending_index_entry = false;
   }
@@ -126,7 +126,7 @@ void TableBuilder::Flush() {
   Rep* r = rep_;
   assert(!r->closed);
   if (!ok()) return;
-  if (r->data_block.empty()) return;
+  if (r->data_block.empty()) return;    // TableBuilder::Finish()的调用时机可能造成刚好没有data_block
   assert(!r->pending_index_entry);
   WriteBlock(&r->data_block, &r->pending_handle);
   if (ok()) {
@@ -178,10 +178,10 @@ void TableBuilder::WriteRawBlock(const Slice& block_contents,
                                  CompressionType type, BlockHandle* handle) {
   Rep* r = rep_;
   handle->set_offset(r->offset);
-  handle->set_size(block_contents.size());
+  handle->set_size(block_contents.size());  // 将该block的偏移和大小记录到handle中,便于下次添加到 index_block 中
   r->status = r->file->Append(block_contents);
   if (r->status.ok()) {
-    char trailer[kBlockTrailerSize];
+    char trailer[kBlockTrailerSize];    // 对每个block都添加trailer。该trailer对block的实际读取无感
     trailer[0] = type;
     uint32_t crc = crc32c::Value(block_contents.data(), block_contents.size());
     crc = crc32c::Extend(crc, trailer, 1);  // Extend crc to cover block type
@@ -227,7 +227,7 @@ Status TableBuilder::Finish() {
 
   // Write index block
   if (ok()) {
-    if (r->pending_index_entry) {
+    if (r->pending_index_entry) {   // 函数开始时的Flush会产生一个待写入的index_handle
       r->options.comparator->FindShortSuccessor(&r->last_key);
       std::string handle_encoding;
       r->pending_handle.EncodeTo(&handle_encoding);
@@ -237,7 +237,7 @@ Status TableBuilder::Finish() {
     WriteBlock(&r->index_block, &index_block_handle);
   }
 
-  // Write footer
+  // Write footer, 记录 metaindex_block 和 index_block 的位置,读取时先通过这两个来读取数据
   if (ok()) {
     Footer footer;
     footer.set_metaindex_handle(metaindex_block_handle);

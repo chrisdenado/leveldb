@@ -195,7 +195,7 @@ Status DBImpl::NewDB() {
     log::Writer log(file);
     std::string record;
     new_db.EncodeTo(&record);
-    s = log.AddRecord(record);
+    s = log.AddRecord(record);  // 将VersionEdit写入MANIFEST文件
     if (s.ok()) {
       s = file->Sync();
     }
@@ -206,7 +206,7 @@ Status DBImpl::NewDB() {
   delete file;
   if (s.ok()) {
     // Make "CURRENT" file that points to the new manifest file.
-    s = SetCurrentFile(env_, dbname_, 1);
+    s = SetCurrentFile(env_, dbname_, 1);   // 将当前用的 MANIFEST文件名 写入 CURRENT文件
   } else {
     env_->RemoveFile(manifest);
   }
@@ -297,7 +297,7 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
   // may already exist from a previous failed creation attempt.
   env_->CreateDir(dbname_);
   assert(db_lock_ == nullptr);
-  Status s = env_->LockFile(LockFileName(dbname_), &db_lock_); // 创建文件锁 支持多进程并发访问同一个数据库
+  Status s = env_->LockFile(LockFileName(dbname_), &db_lock_); // 创建文件锁, 一个进数据库只支持一个进程访问
   if (!s.ok()) {
     return s;
   }
@@ -349,7 +349,7 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
   for (size_t i = 0; i < filenames.size(); i++) {
     if (ParseFileName(filenames[i], &number, &type)) {
       expected.erase(number);
-      if (type == kLogFile && ((number >= min_log) || (number == prev_log)))
+      if (type == kLogFile && ((number >= min_log) || (number == prev_log)))    // 拿出还未添加到描述文件中的日志文件
         logs.push_back(number);
     }
   }
@@ -364,7 +364,7 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
   std::sort(logs.begin(), logs.end());
   for (size_t i = 0; i < logs.size(); i++) {
     s = RecoverLogFile(logs[i], (i == logs.size() - 1), save_manifest, edit,
-                       &max_sequence);
+                       &max_sequence);  // 重演日志
     if (!s.ok()) {
       return s;
     }
@@ -429,7 +429,7 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
   WriteBatch batch;
   int compactions = 0;
   MemTable* mem = nullptr;
-  while (reader.ReadRecord(&record, &scratch) && status.ok()) {
+  while (reader.ReadRecord(&record, &scratch) && status.ok()) { // 重演日志
     if (record.size() < 12) {
       reporter.Corruption(record.size(),
                           Status::Corruption("log record too small"));
@@ -1205,7 +1205,7 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
 
   MutexLock l(&mutex_);
   writers_.push_back(&w);
-  while (!w.done && &w != writers_.front()) {
+  while (!w.done && &w != writers_.front()) {   // 只让队列的第一个进行写操作
     w.cv.Wait();
   }
   if (w.done) {
@@ -1213,12 +1213,12 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
   }
 
   // May temporarily unlock and wait.
-  Status status = MakeRoomForWrite(updates == nullptr);
+  Status status = MakeRoomForWrite(updates == nullptr); // 制定写规则
   uint64_t last_sequence = versions_->LastSequence();
   Writer* last_writer = &w;
   if (status.ok() && updates != nullptr) {  // nullptr batch is for compactions
     WriteBatch* write_batch = BuildBatchGroup(&last_writer);
-    WriteBatchInternal::SetSequence(write_batch, last_sequence + 1);
+    WriteBatchInternal::SetSequence(write_batch, last_sequence + 1);    // WriteBatchInternal 统一提供操纵WriteBatch私有变量的方法. 可避免声明过多的友元,或者 提供不想提供的public接口
     last_sequence += WriteBatchInternal::Count(write_batch);
 
     // Add to log and apply to memtable.  We can release the lock
@@ -1254,7 +1254,7 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
   while (true) {
     Writer* ready = writers_.front();
     writers_.pop_front();
-    if (ready != &w) {
+    if (ready != &w) {  // 进行到此处,则说明此线程的Write没有在前面阻塞
       ready->status = status;
       ready->done = true;
       ready->cv.Signal();

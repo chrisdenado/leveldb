@@ -39,7 +39,6 @@ void WriteBatch::Clear() {
 
 size_t WriteBatch::ApproximateSize() const { return rep_.size(); }
 
-// 内存数据库的迭代接口
 Status WriteBatch::Iterate(Handler* handler) const {
   Slice input(rep_);
   if (input.size() < kHeader) {
@@ -130,7 +129,7 @@ class MemTableInserter : public WriteBatch::Handler {
 };
 }  // namespace
 
-// 通过 MemTableInserter 和 Iterate(), 将WriteBatch转成MemTable进行操作
+// 通过 MemTableInserter 和 Iterate(), 将WriteBatch写入MemTable
 Status WriteBatchInternal::InsertInto(const WriteBatch* b, MemTable* memtable) {
   MemTableInserter inserter;
   inserter.sequence_ = WriteBatchInternal::Sequence(b);

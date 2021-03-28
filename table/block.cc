@@ -251,7 +251,6 @@ class Block::Iter : public Iterator {
     value_.clear();
   }
 
-  // 始终需要先执行该函数，获取当前位置的record，并将value写入value_
   bool ParseNextKey() {
     current_ = NextEntryOffset();
     const char* p = data_ + current_;
@@ -265,7 +264,7 @@ class Block::Iter : public Iterator {
 
     // Decode next entry
     uint32_t shared, non_shared, value_length;
-    p = DecodeEntry(p, limit, &shared, &non_shared, &value_length);
+    p = DecodeEntry(p, limit, &shared, &non_shared, &value_length); // 返回的p从 non_shared_value 开始,所以下面直接append
     if (p == nullptr || key_.size() < shared) {
       CorruptionError();
       return false;
