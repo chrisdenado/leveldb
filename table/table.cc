@@ -153,7 +153,7 @@ static void ReleaseBlock(void* arg, void* h) {
 Iterator* Table::BlockReader(void* arg, const ReadOptions& options,
                              const Slice& index_value) {
   Table* table = reinterpret_cast<Table*>(arg);
-  Cache* block_cache = table->rep_->options.block_cache;
+  Cache* block_cache = table->rep_->options.block_cache;    // table的block也有cache
   Block* block = nullptr;
   Cache::Handle* cache_handle = nullptr;
 
@@ -216,7 +216,7 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k, void* arg,
                                                 const Slice&)) {
   Status s;
   Iterator* iiter = rep_->index_block->NewIterator(rep_->options.comparator);
-  iiter->Seek(k);
+  iiter->Seek(k);   // 定位到k可能在的block的位置
   if (iiter->Valid()) {
     Slice handle_value = iiter->value();
     FilterBlockReader* filter = rep_->filter;
@@ -225,7 +225,7 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k, void* arg,
         !filter->KeyMayMatch(handle.offset(), k)) {
       // Not found
     } else {
-      Iterator* block_iter = BlockReader(this, options, iiter->value());
+      Iterator* block_iter = BlockReader(this, options, iiter->value());    // 读取该block
       block_iter->Seek(k);
       if (block_iter->Valid()) {
         (*handle_result)(arg, block_iter->key(), block_iter->value());

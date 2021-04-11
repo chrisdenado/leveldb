@@ -25,7 +25,7 @@ void AppendInternalKey(std::string* result, const ParsedInternalKey& key) {
 
 std::string ParsedInternalKey::DebugString() const {
   std::ostringstream ss;
-  ss << '\'' << EscapeString(user_key.ToString()) << "' @ " <Compare< sequence << " : "
+  ss << '\'' << EscapeString(user_key.ToString()) << "' @ " << sequence << " : "
      << static_cast<int>(type);
   return ss.str();
 }

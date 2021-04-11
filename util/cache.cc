@@ -192,6 +192,8 @@ class LRUCache {
   // Entries are in use by clients, and have refs >= 2 and in_cache==true.
   LRUHandle in_use_ GUARDED_BY(mutex_);  // 目前被外部使用的节点
 
+    // 缓存的数据要么在lru_, 要么在 in_use_ 但都会被保存在 table_中
+    // lru_的作用是记录最近使用情况. in_use_可以确保正在使用的缓存不会被清除
   HandleTable table_ GUARDED_BY(mutex_);
 };
 
@@ -294,7 +296,7 @@ Cache::Handle* LRUCache::Insert(const Slice& key, uint32_t hash, void* value,
   while (usage_ > capacity_ && lru_.next != &lru_) {    // 需要移除一些不常使用的数据
     LRUHandle* old = lru_.next;
     assert(old->refs == 1);
-    bool erased = FinishErase(table_.Remove(old->key(), old->hash));
+    bool erased = FinishErase(table_.Remove(old->key(), old->hash));    // table中移除, lru中移除
     if (!erased) {  // to avoid unused variable when compiled NDEBUG
       assert(erased);
     }

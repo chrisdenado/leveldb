@@ -159,7 +159,7 @@ void DBIter::Next() {
     // saved_key_ already contains the key to skip past.
   } else {
     // Store in saved_key_ the current key so we skip it below.
-    SaveKey(ExtractUserKey(iter_->key()), &saved_key_);
+    SaveKey(ExtractUserKey(iter_->key()), &saved_key_); // 先缓存,用于跳过saved_key_的所有老版本数据
 
     // iter_ is pointing to current key. We can now safely move to the next to
     // avoid checking current key.
@@ -171,7 +171,7 @@ void DBIter::Next() {
     }
   }
 
-  FindNextUserEntry(true, &saved_key_);
+  FindNextUserEntry(true, &saved_key_); // 找到下一个user_key的有效位置
 }
 
 void DBIter::FindNextUserEntry(bool skipping, std::string* skip) {
@@ -185,9 +185,9 @@ void DBIter::FindNextUserEntry(bool skipping, std::string* skip) {
         case kTypeDeletion:
           // Arrange to skip all upcoming entries for this key since
           // they are hidden by this deletion.
-          SaveKey(ikey.user_key, skip);
+          SaveKey(ikey.user_key, skip); // 删除的元素,直接跳过该user_key的所有entry. 即迭代时忽略该key
           skipping = true;
-          break;
+          break;    // 这个break是switch的,不是while的.......
         case kTypeValue:
           if (skipping &&
               user_comparator_->Compare(ikey.user_key, *skip) <= 0) {
@@ -242,7 +242,7 @@ void DBIter::FindPrevUserEntry() {
       ParsedInternalKey ikey;
       if (ParseKey(&ikey) && ikey.sequence <= sequence_) {
         if ((value_type != kTypeDeletion) &&
-            user_comparator_->Compare(ikey.user_key, saved_key_) < 0) {
+            user_comparator_->Compare(ikey.user_key, saved_key_) < 0) { // 因为prev时, iter是该user_key的前一个
           // We encountered a non-deleted value in entries for previous keys,
           break;
         }

@@ -49,9 +49,9 @@ Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
     std::string fname = TableFileName(dbname_, file_number);
     RandomAccessFile* file = nullptr;
     Table* table = nullptr;
-    s = env_->NewRandomAccessFile(fname, &file);
+    s = env_->NewRandomAccessFile(fname, &file);    // cache中没有,则读取文件
     if (!s.ok()) {
-      std::string old_fname = SSTTableFileName(dbname_, file_number);
+      std::string old_fname = SSTTableFileName(dbname_, file_number);   // 老版本的文件后缀名为sst
       if (env_->NewRandomAccessFile(old_fname, &file).ok()) {
         s = Status::OK();
       }

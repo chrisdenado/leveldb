@@ -223,7 +223,7 @@ Iterator* Version::NewConcatenatingIterator(const ReadOptions& options,
                                             int level) const {
   return NewTwoLevelIterator(
       new LevelFileNumIterator(vset_->icmp_, &files_[level]), &GetFileIterator,
-      vset_->table_cache_, options);    //LevelFileNumIterator为第一级迭代器, GetFileIterator()的结果做第二级迭代器(sorted table)
+      vset_->table_cache_, options);    //LevelFileNumIterator为第一级迭代器,先找到对应的sst文件, GetFileIterator()的结果做第二级迭代器(sorted table)
 }
 
 // 将所有level文件合成一个列表,生成 MergingIterator(在 DBImpl::NewInternalIterator 中实现)
@@ -637,7 +637,7 @@ class VersionSet::Builder {
     for (size_t i = 0; i < edit->compact_pointers_.size(); i++) {
       const int level = edit->compact_pointers_[i].first;
       vset_->compact_pointer_[level] =
-          edit->compact_pointers_[i].second.Encode().ToString();
+          edit->compact_pointers_[i].second.Encode().ToString();    // 更新每一层的压缩点(下一次压缩从该压缩点之后压缩, 除非该层都压缩完了一遍, 则又从头开始压缩)
     }
 
     // Delete files
@@ -669,7 +669,7 @@ class VersionSet::Builder {
       f->allowed_seeks = static_cast<int>((f->file_size / 16384U));
       if (f->allowed_seeks < 100) f->allowed_seeks = 100;
 
-      levels_[level].deleted_files.erase(f->number);    // 移除对该文件的删除情况
+      levels_[level].deleted_files.erase(f->number);    // 移除对该文件的删除情况(如果有的话)
       levels_[level].added_files->insert(f);
     }
   }
@@ -691,7 +691,10 @@ class VersionSet::Builder {
         for (std::vector<FileMetaData*>::const_iterator bpos =
                  std::upper_bound(base_iter, base_end, added_file, cmp);    // 查找base_中第一个smallest大于 added_file 的位置
              base_iter != bpos; ++base_iter) {  // 向v->level中添加base_中所有小于 bpos 的元素. 并且下一次可以从当前位置iter继续查找(需要base_和add_file都有序才行)
-          MaybeAddFile(v, level, *base_iter);   // 对level > 0, 确保 v->files_[level] 中已有的最大 largest < base_iter.smallest, 即 base_iter 不会和前面的文件有重叠
+
+            // 对level > 0, 确保 v->files_[level] 中已有的最大 largest < base_iter.smallest, 即 base_iter 不会和前面的文件有重叠.
+            // 该函数同时会删除 base_iter 属于 deleted_files 中的文件.
+          MaybeAddFile(v, level, *base_iter);
         }
 
         MaybeAddFile(v, level, added_file);     // 添加 add元素
@@ -797,7 +800,7 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
 
   Version* v = new Version(this);
   {
-    Builder builder(this, current_);
+    Builder builder(this, current_);    // 以当前为基准,生成新的Version
     builder.Apply(edit);
     builder.SaveTo(v);
   }
@@ -807,7 +810,7 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
   // a temporary file that contains a snapshot of the current version.
   std::string new_manifest_file;
   Status s;
-  if (descriptor_log_ == nullptr) {
+  if (descriptor_log_ == nullptr) {     // 将启动时的状态完整记录，后续只追加 Edit Record即可
     // No reason to unlock *mu here since we only hit this path in the
     // first call to LogAndApply (when opening the database).
     assert(descriptor_file_ == nullptr);
@@ -848,7 +851,7 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
 
   // Install the new version
   if (s.ok()) {
-    AppendVersion(v);
+    AppendVersion(v);   // 更新current_
     log_number_ = edit->log_number_;
     prev_log_number_ = edit->prev_log_number_;
   } else {
@@ -1300,15 +1303,15 @@ Compaction* VersionSet::PickCompaction() {
   // Files in level 0 may overlap each other, so pick up all overlapping ones
   if (level == 0) {
     InternalKey smallest, largest;
-    GetRange(c->inputs_[0], &smallest, &largest);
+    GetRange(c->inputs_[0], &smallest, &largest);   // 获取待压缩文件中的值的范围
     // Note that the next call will discard the file we placed in
     // c->inputs_[0] earlier and replace it with an overlapping set
     // which will include the picked file.
-    current_->GetOverlappingInputs(0, &smallest, &largest, &c->inputs_[0]); // level0文件由于key并非有序,所以需要找整层
+    current_->GetOverlappingInputs(0, &smallest, &largest, &c->inputs_[0]); // level0文件由于key并非有序,所以需要找整层, 将重叠的文件都放在c->inputs_[0]中
     assert(!c->inputs_[0].empty());
   }
 
-  SetupOtherInputs(c);
+  SetupOtherInputs(c);  // 从下一层搜索有重叠的文件, 然后两者进行压缩
 
   return c;
 }
@@ -1419,7 +1422,7 @@ void VersionSet::SetupOtherInputs(Compaction* c) {
         inputs1_size + expanded0_size <     // 按新的情况计算size
             ExpandedCompactionByteSizeLimit(options_)) {
       InternalKey new_start, new_limit;
-      GetRange(expanded0, &new_start, &new_limit);
+      GetRange(expanded0, &new_start, &new_limit);  // level层扩展后的范围
       std::vector<FileMetaData*> expanded1;
       current_->GetOverlappingInputs(level + 1, &new_start, &new_limit,
                                      &expanded1);

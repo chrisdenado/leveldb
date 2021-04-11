@@ -215,7 +215,7 @@ class Block::Iter : public Iterator {
     // This is true if we determined the key we desire is in the current block
     // and is after than the current key.
     assert(current_key_compare == 0 || Valid());
-    bool skip_seek = left == restart_index_ && current_key_compare < 0;
+    bool skip_seek = left == restart_index_ && current_key_compare < 0;     // 不用跳重启点的一种情况
     if (!skip_seek) {
       SeekToRestartPoint(left);
     }

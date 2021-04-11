@@ -101,7 +101,7 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
 
   if (r->pending_index_entry) {     // 每一次flush完成后置true, 待下一次Add时会插入BlockHandle的索引信息
     assert(r->data_block.empty());
-    r->options.comparator->FindShortestSeparator(&r->last_key, key);
+    r->options.comparator->FindShortestSeparator(&r->last_key, key);    // 对上一个key和当前key取最小分割的字符串。 比如上一个key是 "abcdf", 下一个key是 "acdf". 则用ac做last_key， 压缩index_block的大小
     std::string handle_encoding;
     r->pending_handle.EncodeTo(&handle_encoding);   // 在Flush完成时更新的pending_handle, 在此处写到sstable的index_block中
     r->index_block.Add(r->last_key, Slice(handle_encoding));
@@ -231,7 +231,7 @@ Status TableBuilder::Finish() {
       r->options.comparator->FindShortSuccessor(&r->last_key);
       std::string handle_encoding;
       r->pending_handle.EncodeTo(&handle_encoding);
-      r->index_block.Add(r->last_key, Slice(handle_encoding));
+      r->index_block.Add(r->last_key, Slice(handle_encoding));  // 为了压缩index_block的大小，对last_key进行了处理。 因为是最后一个block，所以直接找比last_key大的最短字符串即可
       r->pending_index_entry = false;
     }
     WriteBlock(&r->index_block, &index_block_handle);

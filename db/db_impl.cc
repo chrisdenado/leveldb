@@ -271,7 +271,7 @@ void DBImpl::RemoveObsoleteFiles() {
       if (!keep) {
         files_to_delete.push_back(std::move(filename));
         if (type == kTableFile) {
-          table_cache_->Evict(number);
+          table_cache_->Evict(number);      // 对应的从cache中移除 删除sstable的缓存. 如果指定了block缓存，则不会删除block, 等待LRU机制自行将无效的block缓存删除
         }
         Log(options_.info_log, "Delete type=%d #%lld\n", static_cast<int>(type),
             static_cast<unsigned long long>(number));
@@ -533,7 +533,7 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
     const Slice min_user_key = meta.smallest.user_key();
     const Slice max_user_key = meta.largest.user_key();
     if (base != nullptr) {
-      level = base->PickLevelForMemTableOutput(min_user_key, max_user_key);
+      level = base->PickLevelForMemTableOutput(min_user_key, max_user_key); // 小优化: 如果和level0没有overlap,则向下尝试,和 下一级没有overlap 且和 下下级的overlap情况不严重,则可将该文件下放一级(避免level0文件太多)
     }
     edit->AddFile(level, meta.number, meta.file_size, meta.smallest,
                   meta.largest);
@@ -564,8 +564,8 @@ void DBImpl::CompactMemTable() {
   // Replace immutable memtable with the generated Table
   if (s.ok()) {
     edit.SetPrevLogNumber(0);
-    edit.SetLogNumber(logfile_number_);  // Earlier logs no longer needed
-    s = versions_->LogAndApply(&edit, &mutex_);
+    edit.SetLogNumber(logfile_number_);  // Earlier logs no longer needed. LevelDB重启时，则会从当前的logfile_number_恢复memtable并Dump
+    s = versions_->LogAndApply(&edit, &mutex_);     // 注意: 通过VersionEdit然后再应用到当前Version，以生成新Version。避免了一些中间状态的产生
   }
 
   if (s.ok()) {
@@ -729,7 +729,7 @@ void DBImpl::BackgroundCompaction() {
   Status status;
   if (c == nullptr) {
     // Nothing to do
-  } else if (!is_manual && c->IsTrivialMove()) {
+  } else if (!is_manual && c->IsTrivialMove()) {    // 判断是否可以直接移到下一层level中
     // Move file to next level
     assert(c->num_input_files(0) == 1);
     FileMetaData* f = c->input(0, 0);
@@ -935,7 +935,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     Slice key = input->key();
     if (compact->compaction->ShouldStopBefore(key) &&
         compact->builder != nullptr) {
-      status = FinishCompactionOutputFile(compact, input);  // 当前压缩输出的文件和level+2层重复较大,所以提前结束此压缩文件的生成
+      status = FinishCompactionOutputFile(compact, input);  // 当前压缩输出的文件和level+2层重复较大,所以提前结束此压缩文件的生成. 开始新的sstable
       if (!status.ok()) {
         break;
       }
@@ -958,12 +958,12 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         last_sequence_for_key = kMaxSequenceNumber;
       }
 
-      if (last_sequence_for_key <= compact->smallest_snapshot) { // user_key 的非最新版本小于快照版本，则可以直接丢弃
+      if (last_sequence_for_key <= compact->smallest_snapshot) { // user_key 已有一个版本小于快照(last_sequence_for_key), 所以再往后的旧版本可以删除
         // Hidden by an newer entry for same user key
         drop = true;  // (A)
       } else if (ikey.type == kTypeDeletion &&
                  ikey.sequence <= compact->smallest_snapshot &&
-                 compact->compaction->IsBaseLevelForKey(ikey.user_key)) {   // 删除的user_key, 其版本小于快照版本，并且在更高层没有相同的 user_key
+                 compact->compaction->IsBaseLevelForKey(ikey.user_key)) {   // 当前类型为删除, 且小于快照时,
         // For this user key:
         // (1) there is no data in higher levels
         // (2) data in lower levels will have larger sequence numbers
@@ -989,7 +989,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     if (!drop) {
       // Open output file if necessary
       if (compact->builder == nullptr) {
-        status = OpenCompactionOutputFile(compact);
+        status = OpenCompactionOutputFile(compact);     // 产生新的sst
         if (!status.ok()) {
           break;
         }
@@ -998,7 +998,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         compact->current_output()->smallest.DecodeFrom(key);
       }
       compact->current_output()->largest.DecodeFrom(key);
-      compact->builder->Add(key, input->value());
+      compact->builder->Add(key, input->value());   // Table_Builder::Add
 
       // Close output file if it is big enough
       if (compact->builder->FileSize() >=
@@ -1213,7 +1213,7 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
   }
 
   // May temporarily unlock and wait.
-  Status status = MakeRoomForWrite(updates == nullptr); // 制定写规则
+  Status status = MakeRoomForWrite(updates == nullptr); // 是否有空间可写
   uint64_t last_sequence = versions_->LastSequence();
   Writer* last_writer = &w;
   if (status.ok() && updates != nullptr) {  // nullptr batch is for compactions
@@ -1250,11 +1250,11 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
 
     versions_->SetLastSequence(last_sequence);
   }
-
+    // 依次释放阻塞的线程
   while (true) {
     Writer* ready = writers_.front();
     writers_.pop_front();
-    if (ready != &w) {  // 进行到此处,则说明此线程的Write没有在前面阻塞
+    if (ready != &w) {  // 不是当前的写线程，则还阻塞在前面，所以此处要发信号
       ready->status = status;
       ready->done = true;
       ready->cv.Signal();
@@ -1264,7 +1264,7 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
 
   // Notify new head of write queue
   if (!writers_.empty()) {
-    writers_.front()->cv.Signal();
+    writers_.front()->cv.Signal();  // 说明在WriteBatch时有新的写数据在排队了，或者此处Batch没有全部写完
   }
 
   return status;
@@ -1372,7 +1372,7 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       delete logfile_;
       logfile_ = lfile;
       logfile_number_ = new_log_number;
-      log_ = new log::Writer(lfile);
+      log_ = new log::Writer(lfile);    // 新建MemTable时会更新log_file， 确保一个log_file对应唯一一个MemTable， 恢复时有用
       imm_ = mem_;
       has_imm_.store(true, std::memory_order_release);
       mem_ = new MemTable(internal_comparator_);

@@ -101,7 +101,7 @@ void MemTable::Add(SequenceNumber s, ValueType type, const Slice& key,
 bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
   Slice memkey = key.memtable_key();
   Table::Iterator iter(&table_);
-  iter.Seek(memkey.data()); // 通过key去查询整个buf. (存储时的buf是key+vaule, 查询时先通过key找到buf,通过比对两者key是否一致来判断是否有该key对应的value)
+  iter.Seek(memkey.data());
   if (iter.Valid()) {
     // entry format is:
     //    klength  varint32
